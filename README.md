@@ -32,7 +32,9 @@ backslashes, and spaces are normalized to a `file:///` URL automatically:
 [Shared drive](<\\server\share\spec doc.docx>)
 ```
 
-Bare paths without spaces also work: `[x](C:\temp\x.pdf)`. External links
+Bare paths without spaces also work: `[x](C:\temp\x.pdf)`. Leave the label
+empty — `[](<"C:\path\file.xlsx">)` — and the path itself is shown as the
+link text, so one paste is enough. External links
 open in a new tab so the viewer keeps its place (the vault would otherwise
 need re-picking). Note these links only work while the viewer itself is
 opened from `file://`.

@@ -27,7 +27,7 @@
         codes.push('<img src="' + href + '" alt="' + label.replace(/"/g, '&quot;') + '">');
         return '\uE000' + (codes.length - 1) + '\uE001';
       }
-      return '<a href="' + href + '">' + label + '</a>';
+      return '<a href="' + href + '">' + (label || escapeHtml(href)) + '</a>';
     });
     // protect inline HTML tags (passthrough — the viewer injects anchors/spans pre-parse)
     text = text.replace(/<\/?[a-zA-Z][^<>]*>/g, function (m) {
@@ -38,9 +38,11 @@
     // images ![alt](src)
     text = text.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\)/g,
       '<img src="$2" alt="$1" title="$3">');
-    // links [text](href)
-    text = text.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\)/g,
-      '<a href="$2" title="$3">$1</a>');
+    // links [text](href) — empty text shows the href itself
+    text = text.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\)/g,
+      function (m, label, href, title) {
+        return '<a href="' + href + '" title="' + (title || '') + '">' + (label || href) + '</a>';
+      });
     // bold, italic, strikethrough (bold before italic)
     text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     text = text.replace(/__([^_]+)__/g, '<strong>$1</strong>');

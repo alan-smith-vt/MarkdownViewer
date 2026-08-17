@@ -65,6 +65,8 @@
     border-radius: 4px; padding: 2px 9px; cursor: pointer; font-size: 13px;
   }
   #topbar button:hover { color: var(--text); }
+  #topbar button:disabled { opacity: .35; cursor: default; }
+  #topbar button:disabled:hover { color: var(--muted); }
   #note-title { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #note-path { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
 
@@ -143,6 +145,8 @@
   <div id="main">
     <div id="topbar">
       <button id="treeToggle" title="Toggle file tree">☰</button>
+      <button id="navBack" title="Back (Alt+Left)" disabled>←</button>
+      <button id="navFwd" title="Forward (Alt+Right)" disabled>→</button>
       <span id="note-title"></span>
       <span id="note-path"></span>
     </div>
@@ -631,9 +635,35 @@ function frontmatterHtml(note) {
   return '<details class="frontmatter"><summary>Properties</summary><table>' + rows + '</table></details>';
 }
 
-function openNote(path) {
+// ---------------- Navigation history ----------------
+var navStack = [], navIndex = -1;
+
+function updateNavButtons() {
+  document.getElementById('navBack').disabled = navIndex <= 0;
+  document.getElementById('navFwd').disabled = navIndex >= navStack.length - 1;
+}
+function navBack() {
+  if (navIndex > 0) { navIndex--; openNote(navStack[navIndex], true); }
+}
+function navFwd() {
+  if (navIndex < navStack.length - 1) { navIndex++; openNote(navStack[navIndex], true); }
+}
+document.getElementById('navBack').onclick = navBack;
+document.getElementById('navFwd').onclick = navFwd;
+document.addEventListener('keydown', function (e) {
+  if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); navBack(); }
+  if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); navFwd(); }
+});
+
+function openNote(path, fromHistory) {
   var note = vault.byPath.get(path.toLowerCase());
   if (!note) return;
+  if (!fromHistory && (!currentNote || currentNote.path !== note.path)) {
+    navStack.length = navIndex + 1; // drop any forward entries
+    navStack.push(note.path);
+    navIndex = navStack.length - 1;
+  }
+  updateNavButtons();
   currentNote = note;
   document.getElementById('note-title').textContent = note.basename;
   document.getElementById('note-path').textContent = note.path;

@@ -37,6 +37,11 @@ open in a new tab so the viewer keeps its place (the vault would otherwise
 need re-picking). Note these links only work while the viewer itself is
 opened from `file://`.
 
+Office files (`.xls*`, `.csv`, `.doc*`, `.rtf`, `.ppt*`) are rewritten to
+Office URI schemes (`ms-excel:` / `ms-word:` / `ms-powerpoint:`) so they
+launch in the installed app instead of downloading. Edge asks
+"Open Microsoft Excel?" the first time — tick "Always allow" to silence it.
+
 ## Known v1 deviations from Obsidian (per spec decisions)
 
 - Ambiguous basename links: first match wins (no proximity rule).

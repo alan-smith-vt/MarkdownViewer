@@ -555,9 +555,18 @@ function normalizeExternalLinks(root) {
       href = 'file:///' + href.replace(/\\/g, '/');
     }
     href = href.replace(/ /g, '%20');
-    a.setAttribute('href', href);
-    a.setAttribute('target', '_blank');
-    a.setAttribute('rel', 'noopener');
+    // Office files: browsers can only download them, so hand them to the
+    // installed app via Office URI schemes (ofe = open for edit).
+    var office = /\.(xls[xmb]?|csv)$/i.test(href) ? 'ms-excel'
+               : /\.(docx?|docm|rtf)$/i.test(href) ? 'ms-word'
+               : /\.(pptx?|ppsx?|pptm)$/i.test(href) ? 'ms-powerpoint' : null;
+    if (office && /^file:/i.test(href)) {
+      a.setAttribute('href', office + ':ofe|u|' + href);
+    } else {
+      a.setAttribute('href', href);
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener');
+    }
   });
 }
 

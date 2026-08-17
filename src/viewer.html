@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vault Viewer</title>
+<style>
+  :root {
+    --bg: #ffffff; --bg-alt: #f6f7f9; --border: #d9dce1; --text: #24292f;
+    --muted: #6e7781; --accent: #4a6bdc; --accent-soft: #e8edfb;
+    --code-bg: #f0f1f3; --popup-shadow: 0 6px 24px rgba(0,0,0,.18);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 15px/1.6 "Segoe UI", system-ui, sans-serif;
+    color: var(--text); background: var(--bg);
+  }
+
+  /* ---- picker screen ---- */
+  #picker {
+    height: 100%; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+  }
+  #picker h1 { font-size: 22px; font-weight: 600; margin: 0; }
+  #picker p { color: var(--muted); margin: 0; }
+  #pickBtn {
+    font-size: 15px; padding: 10px 22px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  }
+  #pickBtn:hover { filter: brightness(1.08); }
+
+  /* ---- app layout ---- */
+  #app { display: none; height: 100%; }
+  #app.active { display: flex; }
+
+  #tree-panel {
+    width: 260px; min-width: 0; flex: 0 0 auto; overflow-y: auto;
+    background: var(--bg-alt); border-right: 1px solid var(--border);
+    padding: 8px 4px 40px; user-select: none;
+  }
+  #tree-resizer { flex: 0 0 5px; cursor: col-resize; background: transparent; }
+  #tree-resizer:hover { background: var(--accent-soft); }
+
+  .tnode { font-size: 13.5px; }
+  .tlabel {
+    display: flex; align-items: center; gap: 4px; padding: 2px 6px;
+    border-radius: 4px; cursor: pointer; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .tlabel:hover { background: rgba(0,0,0,.05); }
+  .tlabel.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tfolder > .tlabel { font-weight: 600; }
+  .tfolder > .tlabel::before { content: "▸"; font-size: 10px; width: 11px; color: var(--muted); }
+  .tfolder.open > .tlabel::before { content: "▾"; }
+  .tchildren { padding-left: 14px; display: none; }
+  .tfolder.open > .tchildren { display: block; }
+
+  #main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+  #topbar {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-bottom: 1px solid var(--border);
+  }
+  #topbar button {
+    border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+    border-radius: 4px; padding: 2px 9px; cursor: pointer; font-size: 13px;
+  }
+  #topbar button:hover { color: var(--text); }
+  #note-title { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #note-path { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+
+  #content-row { flex: 1 1 auto; display: flex; min-height: 0; }
+  #content { flex: 1 1 auto; overflow-y: auto; padding: 24px 40px 80px; min-width: 0; }
+  #content > .note-body { max-width: 760px; margin: 0 auto; }
+
+  /* ---- graph panel ---- */
+  #graph-panel {
+    flex: 0 0 auto; width: 340px; border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; background: var(--bg-alt);
+  }
+  #graph-panel.hidden { display: none; }
+  #graph-head {
+    padding: 5px 10px; font-size: 12px; color: var(--muted);
+    border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;
+  }
+  #graph-canvas { flex: 1 1 auto; width: 100%; cursor: grab; }
+
+  /* ---- markdown ---- */
+  .note-body h1, .note-body h2, .note-body h3 { line-height: 1.3; margin: 1.2em 0 .5em; }
+  .note-body h1 { font-size: 1.7em; } .note-body h2 { font-size: 1.35em; } .note-body h3 { font-size: 1.15em; }
+  .note-body code { background: var(--code-bg); border-radius: 3px; padding: 1px 5px; font-size: .88em; font-family: Consolas, monospace; }
+  .note-body pre { background: var(--code-bg); border-radius: 6px; padding: 12px 14px; overflow-x: auto; }
+  .note-body pre code { background: none; padding: 0; }
+  .note-body blockquote { margin: .8em 0; padding: .1em 1em; border-left: 3px solid var(--border); color: var(--muted); }
+  .note-body table { border-collapse: collapse; margin: .8em 0; }
+  .note-body th, .note-body td { border: 1px solid var(--border); padding: 4px 10px; }
+  .note-body th { background: var(--bg-alt); }
+  .note-body img { max-width: 100%; }
+  .note-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+
+  a.wikilink { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; cursor: pointer; }
+  a.wikilink:hover { border-bottom-color: var(--accent); }
+  a.wikilink.unresolved { color: var(--muted); opacity: .65; cursor: default; border-bottom: 1px dashed var(--muted); }
+
+  .tag-chip {
+    display: inline-block; background: var(--accent-soft); color: var(--accent);
+    border-radius: 10px; padding: 0 8px; font-size: .82em;
+  }
+
+  /* ---- callouts ---- */
+  .callout { border-radius: 6px; border: 1px solid; margin: .9em 0; overflow: hidden; }
+  .callout-title { font-weight: 600; padding: 6px 12px; font-size: .92em; }
+  .callout-body { padding: 2px 12px 8px; }
+  .callout-body > :first-child { margin-top: .4em; }
+  .co-note, .co-info { border-color: #7aa2e833; } .co-note .callout-title, .co-info .callout-title { background: #7aa2e81f; color: #3563c4; }
+  .co-tip, .co-success { border-color: #4fb06d33; } .co-tip .callout-title, .co-success .callout-title { background: #4fb06d1f; color: #257a43; }
+  .co-warning, .co-question { border-color: #d9932133; } .co-warning .callout-title, .co-question .callout-title { background: #d993211f; color: #a86a00; }
+  .co-danger, .co-error { border-color: #d24b4b33; } .co-danger .callout-title, .co-error .callout-title { background: #d24b4b1f; color: #b02a2a; }
+  .co-example, .co-quote { border-color: #9a6dd733; } .co-example .callout-title, .co-quote .callout-title { background: #9a6dd71f; color: #6f42c1; }
+
+  /* ---- embeds ---- */
+  .note-embed { border: 1px solid var(--border); border-radius: 6px; margin: .9em 0; }
+  .note-embed > .embed-title { padding: 5px 12px; font-size: .85em; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--bg-alt); }
+  .note-embed > .embed-body { padding: 4px 14px; }
+  .embed-file { display: inline-block; padding: 2px 10px; border: 1px dashed var(--border); border-radius: 4px; color: var(--muted); font-size: .9em; }
+
+  /* ---- frontmatter ---- */
+  details.frontmatter { margin: 0 0 1em; font-size: .85em; }
+  details.frontmatter summary { color: var(--muted); cursor: pointer; }
+  details.frontmatter table { border-collapse: collapse; margin-top: 4px; }
+  details.frontmatter td { border: 1px solid var(--border); padding: 2px 10px; }
+  details.frontmatter td:first-child { color: var(--muted); background: var(--bg-alt); }
+
+  /* ---- hover preview ---- */
+  .hover-popup {
+    position: fixed; z-index: 100; width: 400px; max-height: 350px; overflow-y: auto;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: var(--popup-shadow); padding: 10px 16px; font-size: 13.5px;
+  }
+  .hover-popup .popup-title { font-weight: 700; margin-bottom: 4px; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div id="picker">
+  <h1>Vault Viewer</h1>
+  <p>Select your vault folder to begin. Nothing is uploaded or modified — the vault is read locally, in this tab only.</p>
+  <button id="pickBtn">Open vault folder…</button>
+  <input type="file" id="dirInput" webkitdirectory multiple hidden>
+</div>
+
+<div id="app">
+  <div id="tree-panel"></div>
+  <div id="tree-resizer"></div>
+  <div id="main">
+    <div id="topbar">
+      <button id="treeToggle" title="Toggle file tree">☰</button>
+      <span id="note-title"></span>
+      <span id="note-path"></span>
+      <button id="graphToggle" title="Toggle local graph">Graph</button>
+    </div>
+    <div id="content-row">
+      <div id="content"><div class="note-body" id="note-body"></div></div>
+      <div id="graph-panel">
+        <div id="graph-head"><span>Local graph (depth 2)</span><span id="graph-count"></span></div>
+        <canvas id="graph-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="parser-slot">/*__PARSER__*/</script>
+<script>
+'use strict';
+/* ================================================================
+ * Vault Viewer — single-file, read-only Obsidian vault renderer.
+ * ================================================================ */
+
+// Parser abstraction (spec §4.2): marked if present, else markdown-lite.
+function renderMarkdown(text) {
+  if (window.marked) return marked.parse(text, { mangle: false, headerIds: false });
+  if (window.markdownLite) return markdownLite(text);
+  return '<pre>' + text.replace(/</g, '&lt;') + '</pre>';
+}
+
+function escAttr(s) { return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ---------------- Vault state ----------------
+var vault = {
+  notes: [],            // note objects
+  byPath: new Map(),    // lower path -> note
+  byBase: new Map(),    // lower basename -> [paths] (first wins)
+  attachments: new Map()// lower vault-relative path -> File
+};
+var attachBlobUrls = new Map(); // lower path -> blob url (never revoked; spec §4.4)
+var currentNote = null;
+
+// ---------------- Loading (spec §2) ----------------
+document.getElementById('pickBtn').onclick = function () {
+  document.getElementById('dirInput').click();
+};
+document.getElementById('dirInput').addEventListener('change', function (e) {
+  loadVault(e.target.files);
+});
+
+function relPath(file) {
+  var p = file.webkitRelativePath || file.name;
+  var idx = p.indexOf('/');
+  return idx === -1 ? p : p.slice(idx + 1); // strip picked-folder segment
+}
+function isHiddenPath(p) {
+  return p.split('/').some(function (seg) { return seg.charAt(0) === '.'; });
+}
+
+function loadVault(fileList) {
+  var files = Array.prototype.slice.call(fileList);
+  var mdFiles = [], reads = [];
+  files.forEach(function (f) {
+    var p = relPath(f);
+    if (isHiddenPath(p)) return;
+    if (/\.md$/i.test(p)) mdFiles.push({ file: f, path: p });
+    else vault.attachments.set(p.toLowerCase(), f);
+  });
+
+  mdFiles.forEach(function (entry) {
+    reads.push(entry.file.text().then(function (raw) {
+      var base = entry.path.replace(/\.md$/i, '').split('/').pop();
+      var fm = parseFrontmatter(raw);
+      var note = {
+        path: entry.path, basename: base, raw: raw,
+        frontmatter: fm.data, body: fm.body,
+        outlinks: [], backlinks: [], tags: fm.tags, html: null
+      };
+      vault.notes.push(note);
+    }));
+  });
+
+  Promise.all(reads).then(function () {
+    vault.notes.sort(function (a, b) { return a.path.localeCompare(b.path); });
+    vault.notes.forEach(function (n) {
+      vault.byPath.set(n.path.toLowerCase(), n);
+      var bl = n.basename.toLowerCase();
+      if (!vault.byBase.has(bl)) vault.byBase.set(bl, []);
+      vault.byBase.get(bl).push(n.path);
+    });
+    indexLinks();
+    buildTree();
+    document.getElementById('picker').style.display = 'none';
+    document.getElementById('app').classList.add('active');
+    var home = vault.notes.find(function (n) {
+      return n.path.indexOf('/') === -1 && /^(readme|home|index)$/i.test(n.basename);
+    });
+    openNote((home || vault.notes[0]).path);
+  });
+}
+
+// ---------------- Frontmatter (spec §4.5) ----------------
+function parseFrontmatter(raw) {
+  var m = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/.exec(raw);
+  if (!m) return { data: null, body: raw, tags: [] };
+  var body = raw.slice(m[0].length);
+  var data = {}, tags = [], lastKey = null;
+  try {
+    m[1].split('\n').forEach(function (line) {
+      var kv = /^([A-Za-z0-9_\- ]+):\s*(.*)$/.exec(line);
+      var li = /^\s+-\s+(.*)$/.exec(line);
+      if (kv) {
+        lastKey = kv[1].trim();
+        var v = kv[2].trim();
+        if (/^\[.*\]$/.test(v)) {
+          data[lastKey] = v.slice(1, -1).split(',').map(function (s) { return s.trim().replace(/^["']|["']$/g, ''); }).filter(Boolean);
+        } else if (v === '') data[lastKey] = [];
+        else data[lastKey] = v.replace(/^["']|["']$/g, '');
+      } else if (li && lastKey) {
+        if (!Array.isArray(data[lastKey])) data[lastKey] = [];
+        data[lastKey].push(li[1].trim().replace(/^["']|["']$/g, ''));
+      }
+    });
+  } catch (e) { data = null; }
+  if (data && data.tags) {
+    (Array.isArray(data.tags) ? data.tags : [data.tags]).forEach(function (t) {
+      tags.push(String(t).replace(/^#/, ''));
+    });
+  }
+  return { data: data, body: body, tags: tags };
+}
+
+// ---------------- Link syntax + resolution (spec §3.1) ----------------
+var WIKI_RE = /(!?)\[\[([^\[\]]+?)\]\]/g;
+
+function parseWikiTarget(inner) {
+  var alias = null, pipe = inner.indexOf('|');
+  if (pipe !== -1) { alias = inner.slice(pipe + 1); inner = inner.slice(0, pipe); }
+  var target = inner.replace(/[#^].*$/, '').trim(); // heading/block anchors resolve to the note
+  return { target: target, alias: alias, full: inner.trim() };
+}
+
+// Resolves a wiki target (or attachment name) to a vault-relative note path, or null.
+function resolveNote(target) {
+  if (!target) return null;
+  var t = target.toLowerCase().replace(/\\/g, '/');
+  var withExt = /\.md$/.test(t) ? t : t + '.md';
+  if (vault.byPath.has(withExt)) return vault.byPath.get(withExt).path;
+  var base = withExt.replace(/\.md$/, '').split('/').pop();
+  var cands = vault.byBase.get(base);
+  return cands ? cands[0] : null; // first match wins (documented deviation)
+}
+function resolveAttachment(target) {
+  var t = target.toLowerCase().replace(/\\/g, '/');
+  if (vault.attachments.has(t)) return t;
+  var base = t.split('/').pop();
+  var found = null;
+  vault.attachments.forEach(function (f, p) {
+    if (!found && p.split('/').pop() === base) found = p;
+  });
+  return found;
+}
+
+function indexLinks() {
+  vault.notes.forEach(function (n) {
+    var seen = {};
+    var text = stripCode(n.body).text;
+    var m;
+    WIKI_RE.lastIndex = 0;
+    while ((m = WIKI_RE.exec(text))) {
+      var t = parseWikiTarget(m[2]);
+      if (/\.[a-z0-9]{2,4}$/i.test(t.target) && !/\.md$/i.test(t.target)) continue; // attachment
+      var p = resolveNote(t.target);
+      if (p && p !== n.path && !seen[p]) { seen[p] = 1; n.outlinks.push(p); }
+    }
+  });
+  vault.notes.forEach(function (n) {
+    n.outlinks.forEach(function (p) {
+      var target = vault.byPath.get(p.toLowerCase());
+      if (target && target.backlinks.indexOf(n.path) === -1) target.backlinks.push(n.path);
+    });
+  });
+}
+
+// ---------------- Code protection (spec §4.1) ----------------
+function stripCode(text) {
+  var stash = [];
+  var out = text.replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`[^`\n]+`/g, function (m) {
+    stash.push(m);
+    return '\uE000' + (stash.length - 1) + '\uE001';
+  });
+  return { text: out, stash: stash };
+}
+function restoreCode(text, stash) {
+  return text.replace(/\uE000(\d+)\uE001/g, function (m, i) { return stash[+i]; });
+}
+
+// ---------------- Render pipeline (spec §4.1) ----------------
+function renderNoteHtml(note) {
+  if (note.html) return note.html;
+  var prot = stripCode(note.body);
+  var text = prot.text;
+
+  // embeds -> HTML markers (resolved post-render in resolveEmbeds)
+  text = text.replace(/!\[\[([^\[\]]+?)\]\]/g, function (m, inner) {
+    var t = parseWikiTarget(inner);
+    return '\n\n<div class="embed-marker" data-target="' + escAttr(t.target) +
+           '" data-arg="' + escAttr(t.alias || '') + '"></div>\n\n';
+  });
+
+  // wiki links -> anchors
+  text = text.replace(/\[\[([^\[\]]+?)\]\]/g, function (m, inner) {
+    var t = parseWikiTarget(inner);
+    var label = escHtml(t.alias !== null ? t.alias : t.full);
+    var p = resolveNote(t.target);
+    if (p) return '<a class="wikilink" data-path="' + escAttr(p) + '">' + label + '</a>';
+    return '<a class="wikilink unresolved" title="No note named &quot;' + escAttr(t.target) + '&quot;">' + label + '</a>';
+  });
+
+  // tags -> chips (not headings, not pure numbers; spec §4.6)
+  text = text.replace(/(^|\s)#([A-Za-z0-9_\/-]+)/gm, function (m, pre, tag) {
+    if (/^\d+$/.test(tag)) return m;
+    return pre + '<span class="tag-chip">#' + escHtml(tag) + '</span>';
+  });
+
+  text = restoreCode(text, prot.stash);
+  var html = renderMarkdown(text);
+  html = processCallouts(html);
+  note.html = html;
+  return html;
+}
+
+// ---------------- Callouts (spec §4.3) ----------------
+var CALLOUT_TYPES = { note:1, info:1, tip:1, warning:1, danger:1, error:1, success:1, question:1, example:1, quote:1 };
+function processCallouts(html) {
+  var root = document.createElement('div');
+  root.innerHTML = html;
+  root.querySelectorAll('blockquote').forEach(function (bq) {
+    var first = bq.firstElementChild;
+    if (!first) return;
+    var m = /^\[!([A-Za-z]+)\][+-]?\s*([^\n]*)/.exec(first.textContent || '');
+    if (!m) return;
+    var type = m[1].toLowerCase();
+    if (!CALLOUT_TYPES[type]) type = 'note';
+    var title = m[2].trim() || (m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase());
+    // remove the marker line from the first paragraph, keep the rest
+    var fh = first.innerHTML.replace(/^\s*\[![A-Za-z]+\][+-]?[^\n<]*(<br\s*\/?>\s*)?/, '');
+    var div = document.createElement('div');
+    div.className = 'callout co-' + type;
+    var body = fh.trim() ? '<p>' + fh + '</p>' : '';
+    first.remove();
+    div.innerHTML = '<div class="callout-title">' + escHtml(title) + '</div>' +
+                    '<div class="callout-body">' + body + bq.innerHTML + '</div>';
+    bq.replaceWith(div);
+  });
+  return root.innerHTML;
+}
+
+// ---------------- Embeds (spec §4.4) ----------------
+function blobUrlFor(attachPath) {
+  var key = attachPath.toLowerCase();
+  if (!attachBlobUrls.has(key)) {
+    var f = vault.attachments.get(key);
+    if (!f) return null;
+    attachBlobUrls.set(key, URL.createObjectURL(f));
+  }
+  return attachBlobUrls.get(key);
+}
+
+function resolveEmbeds(container, depth) {
+  container.querySelectorAll('.embed-marker').forEach(function (el) {
+    var target = el.dataset.target, arg = el.dataset.arg;
+    var isNote = !/\.[a-z0-9]{2,5}$/i.test(target) || /\.md$/i.test(target);
+    if (isNote) {
+      var p = resolveNote(target);
+      var note = p && vault.byPath.get(p.toLowerCase());
+      if (!note) { el.outerHTML = '<span class="embed-file">' + escHtml(target) + '</span>'; return; }
+      if (depth >= 3) { // nesting cap
+        el.outerHTML = '<a class="wikilink" data-path="' + escAttr(note.path) + '">' + escHtml(note.basename) + '</a>';
+        return;
+      }
+      var wrap = document.createElement('div');
+      wrap.className = 'note-embed';
+      wrap.innerHTML = '<div class="embed-title">' + escHtml(note.basename) + '</div><div class="embed-body"></div>';
+      wrap.lastElementChild.innerHTML = renderNoteHtml(note);
+      el.replaceWith(wrap);
+      resolveEmbeds(wrap.lastElementChild, depth + 1);
+    } else if (/\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(target)) {
+      var ap = resolveAttachment(target);
+      var url = ap && blobUrlFor(ap);
+      if (url) {
+        var img = document.createElement('img');
+        img.src = url; img.alt = target;
+        var w = parseInt(arg, 10);
+        if (w) img.width = w;
+        el.replaceWith(img);
+      } else el.outerHTML = '<span class="embed-file">' + escHtml(target) + ' (missing)</span>';
+    } else {
+      el.outerHTML = '<span class="embed-file">📎 ' + escHtml(target) + '</span>';
+    }
+  });
+}
+
+// ---------------- Note display ----------------
+function frontmatterHtml(note) {
+  if (!note.frontmatter || !Object.keys(note.frontmatter).length) return '';
+  var rows = Object.keys(note.frontmatter).map(function (k) {
+    var v = note.frontmatter[k];
+    return '<tr><td>' + escHtml(k) + '</td><td>' + escHtml(Array.isArray(v) ? v.join(', ') : String(v)) + '</td></tr>';
+  }).join('');
+  return '<details class="frontmatter"><summary>Properties</summary><table>' + rows + '</table></details>';
+}
+
+function openNote(path) {
+  var note = vault.byPath.get(path.toLowerCase());
+  if (!note) return;
+  currentNote = note;
+  document.getElementById('note-title').textContent = note.basename;
+  document.getElementById('note-path').textContent = note.path;
+  var body = document.getElementById('note-body');
+  body.innerHTML = frontmatterHtml(note) + renderNoteHtml(note);
+  resolveEmbeds(body, 0);
+  document.getElementById('content').scrollTop = 0;
+  highlightTree(note.path);
+  closeAllPopups();
+  renderGraph(note);
+}
+
+// Delegated navigation: any resolved wikilink anywhere (note, embed, popup).
+document.addEventListener('click', function (e) {
+  var a = e.target.closest('a.wikilink[data-path]');
+  if (a) { e.preventDefault(); openNote(a.dataset.path); }
+});
+
+// ---------------- Folder tree (spec §5) ----------------
+var treeIndex = new Map(); // note path -> label element
+
+function naturalCmp(a, b) {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function buildTree() {
+  var root = { folders: new Map(), notes: [] };
+  vault.notes.forEach(function (n) {
+    var parts = n.path.split('/');
+    var node = root;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (!node.folders.has(parts[i])) node.folders.set(parts[i], { folders: new Map(), notes: [] });
+      node = node.folders.get(parts[i]);
+    }
+    node.notes.push(n);
+  });
+  var panel = document.getElementById('tree-panel');
+  panel.innerHTML = '';
+  panel.appendChild(renderTreeLevel(root));
+}
+
+function renderTreeLevel(node) {
+  var frag = document.createDocumentFragment();
+  Array.from(node.folders.keys()).sort(naturalCmp).forEach(function (name) {
+    var d = document.createElement('div');
+    d.className = 'tnode tfolder';
+    var lab = document.createElement('div');
+    lab.className = 'tlabel'; lab.textContent = name;
+    lab.onclick = function () { d.classList.toggle('open'); };
+    var kids = document.createElement('div');
+    kids.className = 'tchildren';
+    kids.appendChild(renderTreeLevel(node.folders.get(name)));
+    d.appendChild(lab); d.appendChild(kids);
+    frag.appendChild(d);
+  });
+  node.notes.sort(function (a, b) { return naturalCmp(a.basename, b.basename); }).forEach(function (n) {
+    var d = document.createElement('div');
+    d.className = 'tnode';
+    var lab = document.createElement('div');
+    lab.className = 'tlabel'; lab.textContent = n.basename;
+    lab.onclick = function () { openNote(n.path); };
+    treeIndex.set(n.path, lab);
+    d.appendChild(lab);
+    frag.appendChild(d);
+  });
+  return frag;
+}
+
+function highlightTree(path) {
+  treeIndex.forEach(function (el) { el.classList.remove('active'); });
+  var el = treeIndex.get(path);
+  if (!el) return;
+  el.classList.add('active');
+  var anc = el.parentElement;
+  while (anc && anc.id !== 'tree-panel') { // auto-reveal ancestors
+    if (anc.classList && anc.classList.contains('tfolder')) anc.classList.add('open');
+    anc = anc.parentElement;
+  }
+  el.scrollIntoView({ block: 'nearest' });
+}
+
+// Tree resize + collapse
+(function () {
+  var panel = document.getElementById('tree-panel');
+  var rz = document.getElementById('tree-resizer');
+  var dragging = false;
+  rz.addEventListener('mousedown', function () { dragging = true; document.body.style.userSelect = 'none'; });
+  document.addEventListener('mousemove', function (e) {
+    if (dragging) panel.style.width = Math.max(0, e.clientX) + 'px';
+  });
+  document.addEventListener('mouseup', function () { dragging = false; document.body.style.userSelect = ''; });
+  document.getElementById('treeToggle').onclick = function () {
+    panel.style.display = panel.style.display === 'none' ? '' : 'none';
+  };
+})();
+
+// ---------------- Hover previews (spec §6) ----------------
+var popupStack = []; // {el, trigger, showTimer, hideTimer}
+
+function closeAllPopups() { closePopupsFrom(0); }
+function closePopupsFrom(depth) {
+  while (popupStack.length > depth) {
+    var p = popupStack.pop();
+    clearTimeout(p.hideTimer);
+    p.el.remove();
+  }
+}
+function popupDepthOf(el) {
+  for (var i = 0; i < popupStack.length; i++) if (popupStack[i].el === el) return i;
+  return -1;
+}
+function cancelHideFor(depth) {
+  for (var i = 0; i <= depth && i < popupStack.length; i++) clearTimeout(popupStack[i].hideTimer);
+}
+function scheduleHideFrom(depth) {
+  if (depth >= popupStack.length) return;
+  var entry = popupStack[depth];
+  clearTimeout(entry.hideTimer);
+  entry.hideTimer = setTimeout(function () { closePopupsFrom(depth); }, 200);
+}
+
+var pendingShow = null;
+document.addEventListener('mouseover', function (e) {
+  var pop = e.target.closest('.hover-popup');
+  if (pop) cancelHideFor(popupDepthOf(pop));
+
+  var a = e.target.closest('a.wikilink[data-path]');
+  if (!a) return;
+  var parentDepth = pop ? popupDepthOf(pop) : -1;
+  clearTimeout(pendingShow);
+  pendingShow = setTimeout(function () { showPopup(a, parentDepth + 1); }, 300);
+});
+document.addEventListener('mouseout', function (e) {
+  var a = e.target.closest('a.wikilink[data-path]');
+  if (a) clearTimeout(pendingShow);
+  var pop = e.target.closest('.hover-popup');
+  var to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.hover-popup') : null;
+  if (pop && pop !== to) scheduleHideFrom(popupDepthOf(pop));
+  if (!pop && a) {
+    // left a trigger link in the main pane: schedule close of whole chain
+    if (!to) scheduleHideFrom(0);
+  }
+});
+
+function showPopup(trigger, depth) {
+  if (depth >= 5) return; // depth cap
+  if (!document.contains(trigger)) return;
+  closePopupsFrom(depth); // replace any deeper chain
+  var note = vault.byPath.get(trigger.dataset.path.toLowerCase());
+  if (!note) return;
+  var el = document.createElement('div');
+  el.className = 'hover-popup';
+  el.innerHTML = '<div class="popup-title">' + escHtml(note.basename) + '</div>' + renderNoteHtml(note);
+  document.body.appendChild(el);
+  resolveEmbeds(el, 2); // embeds at depth 1 only inside previews
+  positionPopup(el, trigger);
+  popupStack.push({ el: el, trigger: trigger, hideTimer: null });
+}
+
+function positionPopup(el, trigger) {
+  var r = trigger.getBoundingClientRect();
+  var vw = window.innerWidth, vh = window.innerHeight, pad = 20;
+  var w = el.offsetWidth, h = el.offsetHeight;
+  var x = r.left, y = r.bottom + 6;
+  if (x + w > vw - pad) x = Math.max(pad, vw - pad - w);         // flip/clamp horizontally
+  if (y + h > vh - pad) y = Math.max(pad, r.top - 6 - h);        // flip vertically
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+}
+
+// ---------------- Local graph (spec §7) ----------------
+var graph = { nodes: [], edges: [], anim: null, tx: 0, ty: 0, scale: 1, drag: null };
+var gCanvas = document.getElementById('graph-canvas');
+var gCtx = gCanvas.getContext('2d');
+
+document.getElementById('graphToggle').onclick = function () {
+  var p = document.getElementById('graph-panel');
+  p.classList.toggle('hidden');
+  if (!p.classList.contains('hidden') && currentNote) renderGraph(currentNote);
+};
+
+function neighborhood(note) {
+  var depth = new Map(); depth.set(note.path, 0);
+  var frontier = [note.path];
+  for (var d = 1; d <= 2; d++) {
+    var next = [];
+    frontier.forEach(function (p) {
+      var n = vault.byPath.get(p.toLowerCase());
+      if (!n) return;
+      n.outlinks.concat(n.backlinks).forEach(function (q) {
+        if (!depth.has(q)) { depth.set(q, d); next.push(q); }
+      });
+    });
+    frontier = next;
+  }
+  return depth;
+}
+
+function renderGraph(note) {
+  var panel = document.getElementById('graph-panel');
+  if (panel.classList.contains('hidden')) return;
+  var depth = neighborhood(note);
+  var paths = Array.from(depth.keys());
+  var idx = new Map();
+  graph.nodes = paths.map(function (p, i) {
+    idx.set(p, i);
+    return { path: p, base: vault.byPath.get(p.toLowerCase()).basename,
+             x: Math.cos(i * 2.4) * 60 + 170, y: Math.sin(i * 2.4) * 60 + 150,
+             vx: 0, vy: 0, deg: 0, root: p === note.path, pin: false };
+  });
+  graph.edges = [];
+  var seen = {};
+  paths.forEach(function (p) {
+    var n = vault.byPath.get(p.toLowerCase());
+    n.outlinks.forEach(function (q) {
+      if (!idx.has(q)) return;
+      var key = [idx.get(p), idx.get(q)].sort().join(':');
+      if (seen[key]) return; seen[key] = 1;
+      graph.edges.push([idx.get(p), idx.get(q)]);
+      graph.nodes[idx.get(p)].deg++; graph.nodes[idx.get(q)].deg++;
+    });
+  });
+  document.getElementById('graph-count').textContent = graph.nodes.length + ' notes';
+  graph.tx = 0; graph.ty = 0; graph.scale = 1;
+  startSim();
+}
+
+function sizeCanvas() {
+  var r = gCanvas.getBoundingClientRect();
+  gCanvas.width = r.width * devicePixelRatio;
+  gCanvas.height = r.height * devicePixelRatio;
+}
+window.addEventListener('resize', function () { sizeCanvas(); drawGraph(); });
+
+function startSim() {
+  sizeCanvas();
+  if (graph.anim) cancelAnimationFrame(graph.anim);
+  var w = gCanvas.getBoundingClientRect().width, h = gCanvas.getBoundingClientRect().height;
+  function tick() {
+    var ke = 0, ns = graph.nodes;
+    // O(n²) repulsion — fine at 10–60 nodes (spec §7)
+    for (var i = 0; i < ns.length; i++) {
+      var a = ns[i];
+      for (var j = i + 1; j < ns.length; j++) {
+        var b = ns[j];
+        var dx = a.x - b.x, dy = a.y - b.y;
+        var d2 = dx * dx + dy * dy + 0.01, f = 900 / d2;
+        var d = Math.sqrt(d2);
+        dx /= d; dy /= d;
+        a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
+      }
+      // centering
+      a.vx += (w / 2 - a.x) * 0.002; a.vy += (h / 2 - a.y) * 0.002;
+    }
+    graph.edges.forEach(function (e) {
+      var a = ns[e[0]], b = ns[e[1]];
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var d = Math.sqrt(dx * dx + dy * dy) + 0.01;
+      var f = (d - 70) * 0.02;
+      dx /= d; dy /= d;
+      a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
+    });
+    ns.forEach(function (n) {
+      if (n.pin) { n.vx = 0; n.vy = 0; return; }
+      n.vx *= 0.85; n.vy *= 0.85;
+      n.x += n.vx; n.y += n.vy;
+      ke += n.vx * n.vx + n.vy * n.vy;
+    });
+    drawGraph();
+    if (ke > 0.05) graph.anim = requestAnimationFrame(tick); // stop when settled
+    else graph.anim = null;
+  }
+  graph.anim = requestAnimationFrame(tick);
+}
+
+function drawGraph() {
+  var r = gCanvas.getBoundingClientRect();
+  gCtx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  gCtx.clearRect(0, 0, r.width, r.height);
+  gCtx.translate(graph.tx, graph.ty);
+  gCtx.scale(graph.scale, graph.scale);
+  gCtx.strokeStyle = '#c8ccd4';
+  gCtx.lineWidth = 1 / graph.scale;
+  graph.edges.forEach(function (e) {
+    var a = graph.nodes[e[0]], b = graph.nodes[e[1]];
+    gCtx.beginPath(); gCtx.moveTo(a.x, a.y); gCtx.lineTo(b.x, b.y); gCtx.stroke();
+  });
+  graph.nodes.forEach(function (n) {
+    var rad = (n.root ? 9 : 4 + Math.min(5, n.deg));
+    gCtx.beginPath();
+    gCtx.fillStyle = n.root ? '#4a6bdc' : '#9aa3b2';
+    gCtx.arc(n.x, n.y, rad, 0, Math.PI * 2);
+    gCtx.fill();
+    if (graph.scale > 0.6) { // hide labels when zoomed out
+      gCtx.fillStyle = '#555';
+      gCtx.font = (11 / graph.scale) + 'px sans-serif'; // fixed screen size
+      gCtx.textAlign = 'center';
+      gCtx.fillText(n.base, n.x, n.y + rad + 12 / graph.scale);
+    }
+  });
+}
+
+// graph interaction: pan / zoom / drag node / click to navigate / hover preview
+function graphSpace(e) {
+  var r = gCanvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left - graph.tx) / graph.scale,
+           y: (e.clientY - r.top - graph.ty) / graph.scale };
+}
+function hitNode(pt) {
+  for (var i = graph.nodes.length - 1; i >= 0; i--) {
+    var n = graph.nodes[i];
+    var rad = (n.root ? 9 : 4 + Math.min(5, n.deg)) + 3;
+    var dx = pt.x - n.x, dy = pt.y - n.y;
+    if (dx * dx + dy * dy <= rad * rad) return n;
+  }
+  return null;
+}
+gCanvas.addEventListener('mousedown', function (e) {
+  var pt = graphSpace(e);
+  var n = hitNode(pt);
+  graph.drag = n ? { node: n, moved: false } : { pan: true, sx: e.clientX, sy: e.clientY, tx: graph.tx, ty: graph.ty, moved: false };
+  if (n) { n.pin = true; if (!graph.anim) startSim(); }
+});
+window.addEventListener('mousemove', function (e) {
+  if (!graph.drag) return;
+  graph.drag.moved = true;
+  if (graph.drag.node) {
+    var pt = graphSpace(e);
+    graph.drag.node.x = pt.x; graph.drag.node.y = pt.y;
+    if (!graph.anim) startSim();
+  } else {
+    graph.tx = graph.drag.tx + (e.clientX - graph.drag.sx);
+    graph.ty = graph.drag.ty + (e.clientY - graph.drag.sy);
+    drawGraph();
+  }
+});
+window.addEventListener('mouseup', function (e) {
+  if (!graph.drag) return;
+  var d = graph.drag; graph.drag = null;
+  if (d.node) {
+    d.node.pin = false;
+    if (!d.moved) openNote(d.node.path); // click = navigate + re-root
+    else if (!graph.anim) startSim();
+  }
+});
+gCanvas.addEventListener('wheel', function (e) {
+  e.preventDefault();
+  var r = gCanvas.getBoundingClientRect();
+  var mx = e.clientX - r.left, my = e.clientY - r.top;
+  var k = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  // cursor-anchored zoom
+  graph.tx = mx - (mx - graph.tx) * k;
+  graph.ty = my - (my - graph.ty) * k;
+  graph.scale *= k;
+  drawGraph();
+}, { passive: false });
+gCanvas.addEventListener('mousemove', function (e) {
+  if (graph.drag) return;
+  var n = hitNode(graphSpace(e));
+  gCanvas.style.cursor = n ? 'pointer' : 'grab';
+  gCanvas.title = n ? n.base : '';
+});
+</script>
+</body>
+</html>

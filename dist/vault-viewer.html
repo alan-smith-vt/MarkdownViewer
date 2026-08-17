@@ -86,6 +86,8 @@
   .note-body th, .note-body td { border: 1px solid var(--border); padding: 4px 10px; }
   .note-body th { background: var(--bg-alt); }
   .note-body img { max-width: 100%; }
+  .note-body ul.outline { list-style: none; padding-left: 1.4em; }
+  .note-body ul.outline .onum { font-weight: 600; margin-right: .35em; }
   .note-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
 
   a.wikilink { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; cursor: pointer; }
@@ -268,6 +270,31 @@
         out.push('<blockquote>' + parse(q.join('\n')) + '</blockquote>');
         continue;
       }
+      // outline-numbered list: 1. / 1.1 / 1.2.3 — keeps literal numbers,
+      // nests by number depth. Only takes over when the block contains at
+      // least one multipart number; plain 1./2./3. falls through to listBlock.
+      var numRe = /^\s*(\d+(?:\.\d+)+\.?|\d+[.)])\s+(.*)$/;
+      if (numRe.test(line)) {
+        var rows = [], j = i, multi = false, mm;
+        while (j < lines.length && (mm = numRe.exec(lines[j]))) {
+          var marker = mm[1].replace(/[.)]$/, '');
+          if (marker.indexOf('.') !== -1) multi = true;
+          rows.push({ num: mm[1], depth: marker.split('.').length - 1, text: mm[2] });
+          j++;
+        }
+        if (multi) {
+          var oHtml = '<ul class="outline">', oDepth = 0;
+          rows.forEach(function (r) {
+            while (oDepth < r.depth) { oHtml += '<ul class="outline">'; oDepth++; }
+            while (oDepth > r.depth) { oHtml += '</ul>'; oDepth--; }
+            oHtml += '<li><span class="onum">' + escapeHtml(r.num) + '</span> ' + inline(r.text) + '</li>';
+          });
+          while (oDepth-- >= 0) oHtml += '</ul>';
+          out.push(oHtml);
+          i = j;
+          continue;
+        }
+      }
       // list
       if (/^(\s*)([-*+]|\d+[.)])\s+/.test(line)) {
         out.push(listBlock(/^(\s*)/.exec(line)[1].length));
@@ -287,6 +314,19 @@
         out.push(t + '</tbody></table>');
         continue;
       }
+      // tab-delimited table (Word/Excel paste): 2+ consecutive lines with tabs,
+      // first row is the header
+      if (line.indexOf('\t') !== -1 && i + 1 < lines.length && lines[i + 1].indexOf('\t') !== -1) {
+        var trows = [];
+        while (i < lines.length && lines[i].indexOf('\t') !== -1) {
+          trows.push(lines[i++].split('\t').map(function (c) { return c.trim(); }));
+        }
+        var tt = '<table><thead><tr>' + trows[0].map(function (c) { return '<th>' + inline(c) + '</th>'; }).join('') + '</tr></thead><tbody>';
+        for (var ri = 1; ri < trows.length; ri++)
+          tt += '<tr>' + trows[ri].map(function (c) { return '<td>' + inline(c) + '</td>'; }).join('') + '</tr>';
+        out.push(tt + '</tbody></table>');
+        continue;
+      }
       // raw HTML block passthrough (needed for embed markers etc.)
       if (/^\s*<\/?[a-zA-Z][^>]*>/.test(line)) {
         var hb = [];
@@ -297,7 +337,8 @@
       // paragraph
       var p = [];
       while (i < lines.length && !/^\s*$/.test(lines[i]) &&
-             !/^(#{1,6})\s|^(```|~~~)|^\s*>|^(\s*)([-*+]|\d+[.)])\s+/.test(lines[i]))
+             !/^(#{1,6})\s|^(```|~~~)|^\s*>|^(\s*)([-*+]|\d+[.)])\s+|^\s*\d+(\.\d+)+\.?\s+/.test(lines[i]) &&
+             lines[i].indexOf('\t') === -1)
         p.push(lines[i++]);
       out.push('<p>' + inline(p.join('\n')) + '</p>');
     }

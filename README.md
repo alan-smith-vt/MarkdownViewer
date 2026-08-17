@@ -42,6 +42,15 @@ Office URI schemes (`ms-excel:` / `ms-word:` / `ms-powerpoint:`) so they
 launch in the installed app instead of downloading. Edge asks
 "Open Microsoft Excel?" the first time — tick "Always allow" to silence it.
 
+## Syntax extensions beyond standard markdown
+
+- **Outline-numbered lists** — `1.` / `1.1` / `1.2.3` items nest by number
+  depth and keep their literal numbers. Blocks with only plain `1. 2. 3.`
+  markers render as normal auto-numbered lists.
+- **Tab-delimited tables** — two or more consecutive lines containing tab
+  characters (a direct paste from Word or Excel) render as a table, first
+  row as the header. No pipes or separator row needed.
+
 ## Known v1 deviations from Obsidian (per spec decisions)
 
 - Ambiguous basename links: first match wins (no proximity rule).

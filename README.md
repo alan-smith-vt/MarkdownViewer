@@ -22,6 +22,21 @@ subset in `src/markdown-lite.js`.
 python3 build.py
 ```
 
+## Linking to files outside the vault
+
+Paste a Windows "Copy as Path" result directly inside angle brackets — quotes,
+backslashes, and spaces are normalized to a `file:///` URL automatically:
+
+```markdown
+[Beam calcs](<"C:\Engineering\My Calcs\beam check.pdf">)
+[Shared drive](<\\server\share\spec doc.docx>)
+```
+
+Bare paths without spaces also work: `[x](C:\temp\x.pdf)`. External links
+open in a new tab so the viewer keeps its place (the vault would otherwise
+need re-picking). Note these links only work while the viewer itself is
+opened from `file://`.
+
 ## Known v1 deviations from Obsidian (per spec decisions)
 
 - Ambiguous basename links: first match wins (no proximity rule).

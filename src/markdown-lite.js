@@ -19,6 +19,16 @@
       codes.push('<code>' + escapeHtml(body.trim()) + '</code>');
       return '\uE000' + (codes.length - 1) + '\uE001';
     });
+    // angle-bracket links/images: [x](<url or windows path with spaces>)
+    // must run before HTML-tag protection or <C:\...> is mistaken for a tag
+    text = text.replace(/(!?)\[([^\]]*)\]\(<([^<>\n]+)>\)/g, function (m, bang, label, href) {
+      href = href.trim().replace(/^"+|"+$/g, '').replace(/"/g, '%22');
+      if (bang) {
+        codes.push('<img src="' + href + '" alt="' + label.replace(/"/g, '&quot;') + '">');
+        return '\uE000' + (codes.length - 1) + '\uE001';
+      }
+      return '<a href="' + href + '">' + label + '</a>';
+    });
     // protect inline HTML tags (passthrough — the viewer injects anchors/spans pre-parse)
     text = text.replace(/<\/?[a-zA-Z][^<>]*>/g, function (m) {
       codes.push(m);

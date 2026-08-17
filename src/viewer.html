@@ -72,17 +72,6 @@
   #content { flex: 1 1 auto; overflow-y: auto; padding: 24px 40px 80px; min-width: 0; }
   #content > .note-body { max-width: 760px; margin: 0 auto; }
 
-  /* ---- graph panel ---- */
-  #graph-panel {
-    flex: 0 0 auto; width: 340px; border-left: 1px solid var(--border);
-    display: flex; flex-direction: column; background: var(--bg-alt);
-  }
-  #graph-panel.hidden { display: none; }
-  #graph-head {
-    padding: 5px 10px; font-size: 12px; color: var(--muted);
-    border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;
-  }
-  #graph-canvas { flex: 1 1 auto; width: 100%; cursor: grab; }
 
   /* ---- markdown ---- */
   .note-body h1, .note-body h2, .note-body h3 { line-height: 1.3; margin: 1.2em 0 .5em; }
@@ -156,14 +145,9 @@
       <button id="treeToggle" title="Toggle file tree">☰</button>
       <span id="note-title"></span>
       <span id="note-path"></span>
-      <button id="graphToggle" title="Toggle local graph">Graph</button>
     </div>
     <div id="content-row">
       <div id="content"><div class="note-body" id="note-body"></div></div>
-      <div id="graph-panel">
-        <div id="graph-head"><span>Local graph (depth 2)</span><span id="graph-count"></span></div>
-        <canvas id="graph-canvas"></canvas>
-      </div>
     </div>
   </div>
 </div>
@@ -478,7 +462,6 @@ function openNote(path) {
   document.getElementById('content').scrollTop = 0;
   highlightTree(note.path);
   closeAllPopups();
-  renderGraph(note);
 }
 
 // Delegated navigation: any resolved wikilink anywhere (note, embed, popup).
@@ -639,198 +622,6 @@ function positionPopup(el, trigger) {
   el.style.top = y + 'px';
 }
 
-// ---------------- Local graph (spec §7) ----------------
-var graph = { nodes: [], edges: [], anim: null, tx: 0, ty: 0, scale: 1, drag: null };
-var gCanvas = document.getElementById('graph-canvas');
-var gCtx = gCanvas.getContext('2d');
-
-document.getElementById('graphToggle').onclick = function () {
-  var p = document.getElementById('graph-panel');
-  p.classList.toggle('hidden');
-  if (!p.classList.contains('hidden') && currentNote) renderGraph(currentNote);
-};
-
-function neighborhood(note) {
-  var depth = new Map(); depth.set(note.path, 0);
-  var frontier = [note.path];
-  for (var d = 1; d <= 2; d++) {
-    var next = [];
-    frontier.forEach(function (p) {
-      var n = vault.byPath.get(p.toLowerCase());
-      if (!n) return;
-      n.outlinks.concat(n.backlinks).forEach(function (q) {
-        if (!depth.has(q)) { depth.set(q, d); next.push(q); }
-      });
-    });
-    frontier = next;
-  }
-  return depth;
-}
-
-function renderGraph(note) {
-  var panel = document.getElementById('graph-panel');
-  if (panel.classList.contains('hidden')) return;
-  var depth = neighborhood(note);
-  var paths = Array.from(depth.keys());
-  var idx = new Map();
-  graph.nodes = paths.map(function (p, i) {
-    idx.set(p, i);
-    return { path: p, base: vault.byPath.get(p.toLowerCase()).basename,
-             x: Math.cos(i * 2.4) * 60 + 170, y: Math.sin(i * 2.4) * 60 + 150,
-             vx: 0, vy: 0, deg: 0, root: p === note.path, pin: false };
-  });
-  graph.edges = [];
-  var seen = {};
-  paths.forEach(function (p) {
-    var n = vault.byPath.get(p.toLowerCase());
-    n.outlinks.forEach(function (q) {
-      if (!idx.has(q)) return;
-      var key = [idx.get(p), idx.get(q)].sort().join(':');
-      if (seen[key]) return; seen[key] = 1;
-      graph.edges.push([idx.get(p), idx.get(q)]);
-      graph.nodes[idx.get(p)].deg++; graph.nodes[idx.get(q)].deg++;
-    });
-  });
-  document.getElementById('graph-count').textContent = graph.nodes.length + ' notes';
-  graph.tx = 0; graph.ty = 0; graph.scale = 1;
-  startSim();
-}
-
-function sizeCanvas() {
-  var r = gCanvas.getBoundingClientRect();
-  gCanvas.width = r.width * devicePixelRatio;
-  gCanvas.height = r.height * devicePixelRatio;
-}
-window.addEventListener('resize', function () { sizeCanvas(); drawGraph(); });
-
-function startSim() {
-  sizeCanvas();
-  if (graph.anim) cancelAnimationFrame(graph.anim);
-  var w = gCanvas.getBoundingClientRect().width, h = gCanvas.getBoundingClientRect().height;
-  function tick() {
-    var ke = 0, ns = graph.nodes;
-    // O(n²) repulsion — fine at 10–60 nodes (spec §7)
-    for (var i = 0; i < ns.length; i++) {
-      var a = ns[i];
-      for (var j = i + 1; j < ns.length; j++) {
-        var b = ns[j];
-        var dx = a.x - b.x, dy = a.y - b.y;
-        var d2 = dx * dx + dy * dy + 0.01, f = 900 / d2;
-        var d = Math.sqrt(d2);
-        dx /= d; dy /= d;
-        a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
-      }
-      // centering
-      a.vx += (w / 2 - a.x) * 0.002; a.vy += (h / 2 - a.y) * 0.002;
-    }
-    graph.edges.forEach(function (e) {
-      var a = ns[e[0]], b = ns[e[1]];
-      var dx = b.x - a.x, dy = b.y - a.y;
-      var d = Math.sqrt(dx * dx + dy * dy) + 0.01;
-      var f = (d - 70) * 0.02;
-      dx /= d; dy /= d;
-      a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
-    });
-    ns.forEach(function (n) {
-      if (n.pin) { n.vx = 0; n.vy = 0; return; }
-      n.vx *= 0.85; n.vy *= 0.85;
-      n.x += n.vx; n.y += n.vy;
-      ke += n.vx * n.vx + n.vy * n.vy;
-    });
-    drawGraph();
-    if (ke > 0.05) graph.anim = requestAnimationFrame(tick); // stop when settled
-    else graph.anim = null;
-  }
-  graph.anim = requestAnimationFrame(tick);
-}
-
-function drawGraph() {
-  var r = gCanvas.getBoundingClientRect();
-  gCtx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-  gCtx.clearRect(0, 0, r.width, r.height);
-  gCtx.translate(graph.tx, graph.ty);
-  gCtx.scale(graph.scale, graph.scale);
-  gCtx.strokeStyle = '#c8ccd4';
-  gCtx.lineWidth = 1 / graph.scale;
-  graph.edges.forEach(function (e) {
-    var a = graph.nodes[e[0]], b = graph.nodes[e[1]];
-    gCtx.beginPath(); gCtx.moveTo(a.x, a.y); gCtx.lineTo(b.x, b.y); gCtx.stroke();
-  });
-  graph.nodes.forEach(function (n) {
-    var rad = (n.root ? 9 : 4 + Math.min(5, n.deg));
-    gCtx.beginPath();
-    gCtx.fillStyle = n.root ? '#4a6bdc' : '#9aa3b2';
-    gCtx.arc(n.x, n.y, rad, 0, Math.PI * 2);
-    gCtx.fill();
-    if (graph.scale > 0.6) { // hide labels when zoomed out
-      gCtx.fillStyle = '#555';
-      gCtx.font = (11 / graph.scale) + 'px sans-serif'; // fixed screen size
-      gCtx.textAlign = 'center';
-      gCtx.fillText(n.base, n.x, n.y + rad + 12 / graph.scale);
-    }
-  });
-}
-
-// graph interaction: pan / zoom / drag node / click to navigate / hover preview
-function graphSpace(e) {
-  var r = gCanvas.getBoundingClientRect();
-  return { x: (e.clientX - r.left - graph.tx) / graph.scale,
-           y: (e.clientY - r.top - graph.ty) / graph.scale };
-}
-function hitNode(pt) {
-  for (var i = graph.nodes.length - 1; i >= 0; i--) {
-    var n = graph.nodes[i];
-    var rad = (n.root ? 9 : 4 + Math.min(5, n.deg)) + 3;
-    var dx = pt.x - n.x, dy = pt.y - n.y;
-    if (dx * dx + dy * dy <= rad * rad) return n;
-  }
-  return null;
-}
-gCanvas.addEventListener('mousedown', function (e) {
-  var pt = graphSpace(e);
-  var n = hitNode(pt);
-  graph.drag = n ? { node: n, moved: false } : { pan: true, sx: e.clientX, sy: e.clientY, tx: graph.tx, ty: graph.ty, moved: false };
-  if (n) { n.pin = true; if (!graph.anim) startSim(); }
-});
-window.addEventListener('mousemove', function (e) {
-  if (!graph.drag) return;
-  graph.drag.moved = true;
-  if (graph.drag.node) {
-    var pt = graphSpace(e);
-    graph.drag.node.x = pt.x; graph.drag.node.y = pt.y;
-    if (!graph.anim) startSim();
-  } else {
-    graph.tx = graph.drag.tx + (e.clientX - graph.drag.sx);
-    graph.ty = graph.drag.ty + (e.clientY - graph.drag.sy);
-    drawGraph();
-  }
-});
-window.addEventListener('mouseup', function (e) {
-  if (!graph.drag) return;
-  var d = graph.drag; graph.drag = null;
-  if (d.node) {
-    d.node.pin = false;
-    if (!d.moved) openNote(d.node.path); // click = navigate + re-root
-    else if (!graph.anim) startSim();
-  }
-});
-gCanvas.addEventListener('wheel', function (e) {
-  e.preventDefault();
-  var r = gCanvas.getBoundingClientRect();
-  var mx = e.clientX - r.left, my = e.clientY - r.top;
-  var k = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-  // cursor-anchored zoom
-  graph.tx = mx - (mx - graph.tx) * k;
-  graph.ty = my - (my - graph.ty) * k;
-  graph.scale *= k;
-  drawGraph();
-}, { passive: false });
-gCanvas.addEventListener('mousemove', function (e) {
-  if (graph.drag) return;
-  var n = hitNode(graphSpace(e));
-  gCanvas.style.cursor = n ? 'pointer' : 'grab';
-  gCanvas.title = n ? n.base : '';
-});
 </script>
 </body>
 </html>

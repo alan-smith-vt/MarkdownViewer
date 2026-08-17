@@ -548,13 +548,19 @@ function processCallouts(html) {
 
 // Turn pasted Windows paths ("Copy as Path" output) into working file:/// URLs,
 // and open all external links in a new tab so the viewer keeps its place.
+function windowsPathToFileUrl(s) {
+  s = s.trim().replace(/^"+|"+$/g, '');
+  if (/^[A-Za-z]:[\\\/]/.test(s) || /^\\\\/.test(s)) {
+    s = 'file:///' + s.replace(/\\/g, '/');
+  }
+  return s.replace(/ /g, '%20');
+}
 function normalizeExternalLinks(root) {
+  root.querySelectorAll('img[src]').forEach(function (img) {
+    img.setAttribute('src', windowsPathToFileUrl(img.getAttribute('src')));
+  });
   root.querySelectorAll('a[href]').forEach(function (a) {
-    var href = a.getAttribute('href').trim().replace(/^"+|"+$/g, '');
-    if (/^[A-Za-z]:[\\\/]/.test(href) || /^\\\\/.test(href)) {
-      href = 'file:///' + href.replace(/\\/g, '/');
-    }
-    href = href.replace(/ /g, '%20');
+    var href = windowsPathToFileUrl(a.getAttribute('href'));
     // Office files: browsers can only download them, so hand them to the
     // installed app via Office URI schemes (ofe = open for edit).
     var office = /\.(xls[xmb]?|csv)$/i.test(href) ? 'ms-excel'

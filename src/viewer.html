@@ -384,13 +384,20 @@ function processCallouts(html) {
   root.querySelectorAll('blockquote').forEach(function (bq) {
     var first = bq.firstElementChild;
     if (!first) return;
-    var m = /^\[!([A-Za-z]+)\][+-]?\s*([^\n]*)/.exec(first.textContent || '');
+    // the marker line runs to the first <br> (or newline, for parsers that keep them)
+    var firstLine = first.innerHTML.split(/<br\s*\/?>|\n/)[0];
+    var tmp = document.createElement('div');
+    tmp.innerHTML = firstLine;
+    var m = /^\[!([A-Za-z]+)\][+-]?\s*(.*)$/.exec((tmp.textContent || '').trim());
     if (!m) return;
     var type = m[1].toLowerCase();
     if (!CALLOUT_TYPES[type]) type = 'note';
     var title = m[2].trim() || (m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase());
-    // remove the marker line from the first paragraph, keep the rest
-    var fh = first.innerHTML.replace(/^\s*\[![A-Za-z]+\][+-]?[^\n<]*(<br\s*\/?>\s*)?/, '');
+    // remove the marker line (and its trailing break) from the first paragraph, keep the rest
+    var fh = first.innerHTML.replace(/^[\s\S]*?(?:<br\s*\/?>\s*|\n)/, function (mm) {
+      return mm.indexOf('[!') === -1 ? mm : '';
+    });
+    if (/^\s*\[!/.test(fh)) fh = ''; // marker line was the whole paragraph
     var div = document.createElement('div');
     div.className = 'callout co-' + type;
     var body = fh.trim() ? '<p>' + fh + '</p>' : '';

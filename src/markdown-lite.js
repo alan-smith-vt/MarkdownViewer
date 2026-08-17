@@ -170,7 +170,7 @@
         continue;
       }
       // raw HTML block passthrough (needed for embed markers etc.)
-      if (/^\s*<\/?[a-zA-Z][^>]*>/.test(line)) {
+      if (/^\s*<\/?(div|details|summary|table|thead|tbody|tr|td|th|p|ul|ol|li|blockquote|pre|h[1-6]|hr|section|article|figure|figcaption|video|audio|iframe)\b/i.test(line)) {
         var hb = [];
         while (i < lines.length && !/^\s*$/.test(lines[i])) hb.push(lines[i++]);
         out.push(hb.join('\n'));
@@ -182,7 +182,8 @@
              !/^(#{1,6})\s|^(```|~~~)|^\s*>|^(\s*)([-*+]|\d+[.)])\s+|^\s*\d+(\.\d+)+\.?\s+/.test(lines[i]) &&
              lines[i].indexOf('\t') === -1)
         p.push(lines[i++]);
-      out.push('<p>' + inline(p.join('\n')) + '</p>');
+      // Obsidian-style: a single newline is a hard line break
+      out.push('<p>' + inline(p.join('\n')).replace(/\n/g, '<br>\n') + '</p>');
     }
     return out.join('\n');
   }

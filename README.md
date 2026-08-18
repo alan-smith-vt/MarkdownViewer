@@ -49,6 +49,9 @@ launch in the installed app instead of downloading. Edge asks
 - **Outline-numbered lists** — `1.` / `1.1` / `1.2.3` items nest by number
   depth and keep their literal numbers. Blocks with only plain `1. 2. 3.`
   markers render as normal auto-numbered lists.
+- **Obsidian-style line breaks** — a single newline renders as a line
+  break (Obsidian's default), so consecutive `[[links]]` on their own lines
+  stay on separate lines. A blank line still starts a new paragraph.
 - **Tab-delimited tables** — two or more consecutive lines containing tab
   characters (a direct paste from Word or Excel) render as a table, first
   row as the header. No pipes or separator row needed.

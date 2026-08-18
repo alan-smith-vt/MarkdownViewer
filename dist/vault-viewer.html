@@ -331,7 +331,7 @@
         continue;
       }
       // raw HTML block passthrough (needed for embed markers etc.)
-      if (/^\s*<\/?[a-zA-Z][^>]*>/.test(line)) {
+      if (/^\s*<\/?(div|details|summary|table|thead|tbody|tr|td|th|p|ul|ol|li|blockquote|pre|h[1-6]|hr|section|article|figure|figcaption|video|audio|iframe)\b/i.test(line)) {
         var hb = [];
         while (i < lines.length && !/^\s*$/.test(lines[i])) hb.push(lines[i++]);
         out.push(hb.join('\n'));
@@ -343,7 +343,8 @@
              !/^(#{1,6})\s|^(```|~~~)|^\s*>|^(\s*)([-*+]|\d+[.)])\s+|^\s*\d+(\.\d+)+\.?\s+/.test(lines[i]) &&
              lines[i].indexOf('\t') === -1)
         p.push(lines[i++]);
-      out.push('<p>' + inline(p.join('\n')) + '</p>');
+      // Obsidian-style: a single newline is a hard line break
+      out.push('<p>' + inline(p.join('\n')).replace(/\n/g, '<br>\n') + '</p>');
     }
     return out.join('\n');
   }
@@ -575,13 +576,20 @@ function processCallouts(html) {
   root.querySelectorAll('blockquote').forEach(function (bq) {
     var first = bq.firstElementChild;
     if (!first) return;
-    var m = /^\[!([A-Za-z]+)\][+-]?\s*([^\n]*)/.exec(first.textContent || '');
+    // the marker line runs to the first <br> (or newline, for parsers that keep them)
+    var firstLine = first.innerHTML.split(/<br\s*\/?>|\n/)[0];
+    var tmp = document.createElement('div');
+    tmp.innerHTML = firstLine;
+    var m = /^\[!([A-Za-z]+)\][+-]?\s*(.*)$/.exec((tmp.textContent || '').trim());
     if (!m) return;
     var type = m[1].toLowerCase();
     if (!CALLOUT_TYPES[type]) type = 'note';
     var title = m[2].trim() || (m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase());
-    // remove the marker line from the first paragraph, keep the rest
-    var fh = first.innerHTML.replace(/^\s*\[![A-Za-z]+\][+-]?[^\n<]*(<br\s*\/?>\s*)?/, '');
+    // remove the marker line (and its trailing break) from the first paragraph, keep the rest
+    var fh = first.innerHTML.replace(/^[\s\S]*?(?:<br\s*\/?>\s*|\n)/, function (mm) {
+      return mm.indexOf('[!') === -1 ? mm : '';
+    });
+    if (/^\s*\[!/.test(fh)) fh = ''; // marker line was the whole paragraph
     var div = document.createElement('div');
     div.className = 'callout co-' + type;
     var body = fh.trim() ? '<p>' + fh + '</p>' : '';

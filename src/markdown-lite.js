@@ -11,6 +11,43 @@
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  // ---- fenced-code syntax highlighting -----------------------------------
+  // Zero-dependency, ~40 lines. One master regex per language; alternation
+  // order is the precedence (comments beat strings beat keywords). Unmatched
+  // text is escaped verbatim, so a highlighter bug can only miscolor, never
+  // corrupt or inject.
+  var SQL_KW = 'SELECT|FROM|WHERE|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|CROSS|ON|AND|OR|NOT|IN|IS|NULL|LIKE|BETWEEN|EXISTS|AS|CASE|WHEN|THEN|ELSE|END|GROUP|BY|ORDER|HAVING|DISTINCT|TOP|UNION|ALL|WITH|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|VIEW|INDEX|DECLARE|EXEC|EXECUTE|COUNT|SUM|MIN|MAX|AVG|ISNULL|COALESCE|CAST|CONVERT|OVER|PARTITION|ROW_NUMBER|OBJECT_ID|DB_ID|ASC|DESC|ESCAPE|PIVOT|UNPIVOT';
+  var LANGS = {
+    sql: {
+      re: new RegExp('(--[^\\n]*|/\\*[\\s\\S]*?\\*/)|(\'(?:[^\']|\'\')*\')|(\\[[^\\]\\n]*\\])|(@\\w+)|(\\b\\d+(?:\\.\\d+)?\\b)|(\\b(?:' + SQL_KW + ')\\b)', 'gi'),
+      cls: ['c', 's', 'i', 'v', 'n', 'k']
+    },
+    powershell: {
+      re: /(<#[\s\S]*?#>|#[^\n]*)|("(?:`.|[^"`])*"|'[^']*')|(\$\w+|\$\([^)]*\))|(-\w+)|(\b\d+(?:\.\d+)?\b)|(\b(?:function|param|if|else|elseif|foreach|for|while|switch|return|throw|try|catch|finally|New-Object|Add-Type|Join-Path|Get-Content|Test-Path|Write-Host|Export-Csv|Out-GridView|Format-Table|Out-File|Invoke-Sql|Invoke-SqlScalar|ConvertFrom-Json)\b)/gi,
+      cls: ['c', 's', 'v', 'p', 'n', 'k']
+    }
+  };
+  LANGS.tsql = LANGS.sql;
+  LANGS.ps1 = LANGS.powershell;
+
+  function highlight(lang, src) {
+    var def = LANGS[(lang || '').toLowerCase()];
+    if (!def) return escapeHtml(src);
+    var out = '', last = 0, m;
+    def.re.lastIndex = 0;
+    while ((m = def.re.exec(src))) {
+      out += escapeHtml(src.slice(last, m.index));
+      for (var g = 1; g < m.length; g++) {
+        if (m[g] !== undefined) {
+          out += '<span class="tok-' + def.cls[g - 1] + '">' + escapeHtml(m[g]) + '</span>';
+          break;
+        }
+      }
+      last = m.index + m[0].length;
+    }
+    return out + escapeHtml(src.slice(last));
+  }
+
   // ---- inline rendering -------------------------------------------------
   function inline(text) {
     var codes = [];
@@ -97,7 +134,7 @@
         while (i < lines.length && lines[i].indexOf(f[1]) !== 0) buf.push(lines[i++]);
         i++;
         out.push('<pre><code' + (f[2] ? ' class="language-' + escapeHtml(f[2]) + '"' : '') + '>' +
-          escapeHtml(buf.join('\n')) + '</code></pre>');
+          highlight(f[2], buf.join('\n')) + '</code></pre>');
         continue;
       }
       // ATX heading

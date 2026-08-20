@@ -81,6 +81,14 @@
   .note-body code { background: var(--code-bg); border-radius: 3px; padding: 1px 5px; font-size: .88em; font-family: Consolas, monospace; }
   .note-body pre { background: var(--code-bg); border-radius: 6px; padding: 12px 14px; overflow-x: auto; }
   .note-body pre code { background: none; padding: 0; }
+  /* fenced-code syntax tokens (markdown-lite highlight()) */
+  .note-body pre .tok-k { color: #0550ae; font-weight: 600; }  /* keyword */
+  .note-body pre .tok-s { color: #116329; }                    /* string */
+  .note-body pre .tok-c { color: #6e7781; font-style: italic; }/* comment */
+  .note-body pre .tok-n { color: #953800; }                    /* number */
+  .note-body pre .tok-v { color: #8250df; }                    /* @param / $var */
+  .note-body pre .tok-i { color: #0a3069; }                    /* [bracketed identifier] */
+  .note-body pre .tok-p { color: #57606a; }                    /* -Parameter flag */
   .note-body blockquote { margin: .8em 0; padding: .1em 1em; border-left: 3px solid var(--border); color: var(--muted); }
   .note-body table { border-collapse: collapse; margin: .8em 0; }
   .note-body th, .note-body td { border: 1px solid var(--border); padding: 4px 10px; }
